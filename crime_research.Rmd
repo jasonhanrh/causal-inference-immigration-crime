@@ -1,0 +1,99 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+# 读取原始数据
+data <- read.csv("C:\\Users\\12718\\OneDrive\\桌面\\writing_sample\\correlates2-6.csv")
+
+# 筛选出 year 列在 2005 到 2012 年之间的数据
+filtered_data <- subset(data, year >= 2005 & year <= 2012)
+```
+
+```{r}
+library(plm)
+
+# 定义要筛选的列名列表（确保所有列名正确）
+columns_to_select <- c(
+  # 州名称和年份
+  "state", "year",
+  # 犯罪相关变量
+  "vcrimerate", "vcrimetotal", "propcrimerate", "propcrimetotal", 
+  "murderrate", "murdertotal", "robrate", "raperate", "cartheftrate", "carthefttotal",'rdrugs','rliquora','gunhomicides','drunken',
+  
+  # 移民相关变量
+  "immig_laws_restrict", "immig_laws_accom", "immig_laws_total", 'immig_laws_neu',
+  "undocumented_immigrants", "newimmig", "foreign_born", 
+  "immigration_english_language", "imm_sent_enacted1",
+  
+  # 人口特征变量
+  "evangelical_pop", 
+   "medianage", 
+  "percentUrban",'nonwhite','eld','sexratio_mf','single_person_hh',
+  
+  # 社会经济变量
+  "hincomemed", "unemployment", "povrate", "gini_coef", 'pretgini',
+  "uniondensity", "right_to_work", "welfare_spending_percap", 
+  "exp_public_welfare", "exp_health", "exp_education",'general_revenue','achgt','ahcdpi',
+  
+  # 政策和治安相关变量
+  "death_penalty", "dnafelon",
+  "exp_correction", "exp_police_protection", "guncontrol_stand_your_ground",'guncontrol_opencarry', 'w_guncontrol_bc_privatesales',
+  
+  # 其他影响因素
+  "state_legislative_professionalism", "taxrevcorporate",'ssirecipients_total'
+)
+
+# 筛选存在的列（避免列名不存在的错误）
+columns_to_select <- columns_to_select[columns_to_select %in% colnames(filtered_data)]
+
+# 从筛选后的数据中选择特定的列
+data1 <- filtered_data[, columns_to_select, drop = FALSE]
+data1$unemp <- -data1$unemployment
+
+
+
+
+
+```
+
+```{r}
+# 对于数值型变量，使用中位数填补 NA
+data1[] <- lapply(data1, function(x) {
+  if (is.numeric(x)) {
+    x[is.na(x)] <- median(x, na.rm = TRUE)
+  }
+  return(x)
+})
+
+# 对于类别型变量（factor），使用众数填补 NA
+data1[] <- lapply(data1, function(x) {
+  if (is.factor(x) || is.character(x)) {
+    # 计算众数
+    mode_value <- names(sort(table(x), decreasing = TRUE))[1]
+    # 使用众数填补 NA
+    x[is.na(x)] <- mode_value
+  }
+  return(x)
+})
+pdata <- pdata.frame(data1, index = c("state", "year"))
+
+
+```
+
+
+
+
+```{r}
+library(plm)
+fixed_effects_model_n <- plm(
+  vcrimerate ~ immigration_english_language + 
+    nonwhite + eld + gunhomicides + achgt + immig_laws_restrict:povrate+immig_laws_restrict+newimmig:unemployment+ssirecipients_total,
+  data = pdata,
+  model = "within"  # "within" 表示固定效应模型
+)
+
+# 查看模型摘要
+summary(fixed_effects_model_n)
+```
+
