@@ -1,0 +1,626 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# 读取原始数据
+data <- read.csv("C:\\Users\\12718\\OneDrive\\桌面\\writing_sample\\correlates2-6.csv")
+
+# 筛选出 year 列在 2005 到 2012 年之间的数据
+filtered_data <- subset(data, year >= 2005 & year <= 2012)
+```
+
+```{r}
+library(plm)
+
+# 定义要筛选的列名列表（确保所有列名正确）
+columns_to_select <- c(
+  # 州名称和年份
+  "state", "year",
+  # 犯罪相关变量
+  "vcrimerate", "vcrimetotal", "propcrimerate", "propcrimetotal", 
+  "murderrate", "murdertotal", "robrate", "raperate", "cartheftrate", "carthefttotal",'rdrugs','rliquora','gunhomicides','drunken',
+  
+  # 移民相关变量
+  "immig_laws_restrict", "immig_laws_accom", "immig_laws_total", 'immig_laws_neu',
+   "newimmig", "foreign_born", 
+  "immigration_english_language", "imm_sent_enacted1",
+  
+  # 人口特征变量
+  "evangelical_pop", 
+   "medianage", 
+ 'nonwhite','eld',
+  
+  # 社会经济变量
+  "hincomemed", "unemployment", "povrate", "gini_coef", 'pretgini',
+  "uniondensity", "right_to_work", "welfare_spending_percap", 
+  "exp_public_welfare", "exp_health", "exp_education",'general_revenue','achgt','ahcdpi',
+  
+  # 政策和治安相关变量
+  "guncontrol_stand_your_ground",'guncontrol_opencarry',
+  'w_guncontrol_bc_privatesales','apolpi','apolspt',
+  
+  # 其他影响因素
+   "taxrevcorporate",'ssirecipients_total'
+)
+
+# 筛选存在的列（避免列名不存在的错误）
+columns_to_select <- columns_to_select[columns_to_select %in% colnames(filtered_data)]
+
+# 从筛选后的数据中选择特定的列
+data1 <- filtered_data[, columns_to_select, drop = FALSE]
+colnames(data1) <- make.names(colnames(data1), unique = TRUE)
+
+
+
+
+
+```
+
+```{r}
+# 对于数值型变量，使用中位数填补 NA
+data1[] <- lapply(data1, function(x) {
+  if (is.numeric(x)) {
+    x[is.na(x)] <- median(x, na.rm = TRUE)
+  }
+  return(x)
+})
+
+# 对于类别型变量（factor），使用众数填补 NA
+data1[] <- lapply(data1, function(x) {
+  if (is.factor(x) || is.character(x)) {
+    # 计算众数
+    mode_value <- names(sort(table(x), decreasing = TRUE))[1]
+    # 使用众数填补 NA
+    x[is.na(x)] <- mode_value
+  }
+  return(x)
+})
+
+data1$immig_pov_interaction <- data1$immig_laws_restrict * data1$povrate
+data1$immig_unemp_interaction <- data1$immig_laws_restrict * data1$unemployment
+data1$pov_unemp_interaction <- data1$povrate * data1$unemployment
+# Rename the interaction columns in the dataset
+colnames(data1)[colnames(data1) == "immig_pov_interaction"] <- "immig_laws_restrict_povrate"
+colnames(data1)[colnames(data1) == "immig_unemp_interaction"] <- "immig_laws_restrict_unemployment"
+colnames(data1)[colnames(data1) == "pov_unemp_interaction"] <- "povrate_unemployment"
+
+# Verify the column names
+
+
+pdata <- pdata.frame(data1, index = c("state", "year"))
+
+
+```
+
+```{r}
+# 加载dplyr包
+library(dplyr)
+library(xtable)
+
+# 假设你的数据已经加载到 data1 中
+
+# 计算描述性统计量
+descriptive_stats <- data1 %>%
+  summarise(
+    Mean_vcrimerate = mean(vcrimerate, na.rm = TRUE),
+    SD_vcrimerate = sd(vcrimerate, na.rm = TRUE),
+    Min_vcrimerate = min(vcrimerate, na.rm = TRUE),
+    Max_vcrimerate = max(vcrimerate, na.rm = TRUE),
+    Median_vcrimerate = median(vcrimerate, na.rm = TRUE),
+    Obs_vcrimerate = sum(!is.na(vcrimerate)),
+    
+    Mean_immig_laws_restrict = mean(immig_laws_restrict, na.rm = TRUE),
+    SD_immig_laws_restrict = sd(immig_laws_restrict, na.rm = TRUE),
+    Min_immig_laws_restrict = min(immig_laws_restrict, na.rm = TRUE),
+    Max_immig_laws_restrict = max(immig_laws_restrict, na.rm = TRUE),
+    Median_immig_laws_restrict = median(immig_laws_restrict, na.rm = TRUE),
+    Obs_immig_laws_restrict = sum(!is.na(immig_laws_restrict)),
+    
+    Mean_unemployment = mean(unemployment, na.rm = TRUE),
+    SD_unemployment = sd(unemployment, na.rm = TRUE),
+    Min_unemployment = min(unemployment, na.rm = TRUE),
+    Max_unemployment = max(unemployment, na.rm = TRUE),
+    Median_unemployment = median(unemployment, na.rm = TRUE),
+    Obs_unemployment = sum(!is.na(unemployment)),
+    
+    Mean_nonwhite = mean(nonwhite, na.rm = TRUE),
+    SD_nonwhite = sd(nonwhite, na.rm = TRUE),
+    Min_nonwhite = min(nonwhite, na.rm = TRUE),
+    Max_nonwhite = max(nonwhite, na.rm = TRUE),
+    Median_nonwhite = median(nonwhite, na.rm = TRUE),
+    Obs_nonwhite = sum(!is.na(nonwhite))
+  )
+
+# 转置数据框，以使每个变量成为列，描述性统计量成为行
+descriptive_stats_transposed <- t(descriptive_stats)
+
+# 将行名转为列名
+descriptive_stats_df <- as.data.frame(descriptive_stats_transposed)
+colnames(descriptive_stats_df) <- c("vcrimerate", "immig_laws_restrict", "unemployment", "nonwhite")
+
+# 为表格添加描述性统计项的名称
+row.names(descriptive_stats_df) <- c("Mean", "SD", "Min", "Max", "Median", "Observations")
+
+# 使用 xtable 转换为 LaTeX 表格代码
+latex_table <- xtable(descriptive_stats_df, caption = "Descriptive Statistics for Selected Variables", label = "tab:desc_stats")
+
+# 打印 LaTeX 表格代码
+print(latex_table, type = "latex", include.rownames = TRUE, floating = FALSE)
+
+```
+
+```{r}
+# 假设你已经计算了描述性统计量并存储在一个数据框中
+# 这里是一个示例的描述性统计量数据框（请根据你的实际数据来替换）
+
+descriptive_stats <- data.frame(
+  Mean_vcrimerate = 407.06,
+  SD_vcrimerate = 208.47,
+  Min_vcrimerate = 111.00,
+  Max_vcrimerate = 1508.40,
+  Median_vcrimerate = 354.25,
+  Obs_vcrimerate = 408,
+  
+  Mean_immig_laws_restrict = 1.61,
+  SD_immig_laws_restrict = 2.41,
+  Min_immig_laws_restrict = 0,
+  Max_immig_laws_restrict = 15,
+  Median_immig_laws_restrict = 1,
+  Obs_immig_laws_restrict = 408,
+  
+  Mean_unemployment = 6.49,
+  SD_unemployment = 2.35,
+  Min_unemployment = 2.60,
+  Max_unemployment = 13.70,
+  Median_unemployment = 6.10,
+  Obs_unemployment = 408,
+  
+  Mean_nonwhite = 0.2549,
+  SD_nonwhite = 0.1399,
+  Min_nonwhite = 0.0184,
+  Max_nonwhite = 0.7681,
+  Median_nonwhite = 0.2303,
+  Obs_nonwhite = 408
+)
+
+# 将数据框转置，调整结构
+descriptive_stats_transposed <- t(descriptive_stats)
+
+# 将转置后的数据框转为数据框格式
+descriptive_stats_df <- as.data.frame(descriptive_stats_transposed)
+
+# 给数据框添加合适的行名和列名
+colnames(descriptive_stats_df) <- c("vcrimerate", "immig_laws_restrict", "unemployment", "nonwhite")
+row.names(descriptive_stats_df) <- c("Mean", "SD", "Min", "Max", "Median", "Observations")
+
+# 查看结果
+print(descriptive_stats_df)
+
+# 可以使用 xtable 打印为 LaTeX 表格格式
+library(xtable)
+latex_table <- xtable(descriptive_stats_df, caption = "Descriptive Statistics for Selected Variables", label = "tab:desc_stats")
+print(latex_table, type = "latex", include.rownames = TRUE, floating = FALSE)
+
+```
+
+
+```{r}
+# Define the variables of interest
+variables_of_interest <- c(
+  "immig_laws_restrict", "povrate", "unemployment", "nonwhite",
+  "medianage", "achgt", "exp_education", "apolpi", "gini_coef",
+  "guncontrol_opencarry", "w_guncontrol_bc_privatesales",
+  "immig_laws_restrict_povrate", "immig_laws_restrict_unemployment",
+  "povrate_unemployment"
+)
+
+# Filter the dataset to only include the selected variables
+selected_data <- data1[, variables_of_interest]
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(selected_data, use = "pairwise.complete.obs")
+
+# Print the correlation matrix
+print(correlation_matrix)
+
+# Optional: Visualize the correlation matrix (requires the corrplot package)
+# install.packages("corrplot") # Uncomment this line to install the package if not already installed
+library(corrplot)
+corrplot(correlation_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+```
+
+
+
+
+
+```{r}
+library(plm)
+fixed_effects_model_n <- plm(
+  vcrimerate ~ 
+    immig_laws_restrict + povrate + unemployment + nonwhite +
+    medianage + achgt + exp_education + apolpi + gini_coef +guncontrol_opencarry + w_guncontrol_bc_privatesales +
+    immig_laws_restrict * povrate + immig_laws_restrict * unemployment+povrate * unemployment,
+  data = pdata,
+  model = "within"  # "within" 表示固定效应模型
+)
+# 加载 MASS 包用于求解广义逆
+library(MASS)
+
+# 获取原始协方差矩阵
+original_vcov <- vcov(fixed_effects_model_n)
+
+# 添加微小扰动值，使矩阵可逆
+perturbed_vcov <- original_vcov + diag(1e-6, nrow(original_vcov))
+
+
+
+# 查看模型摘要
+fe1<-summary(fixed_effects_model_n, vcov = perturbed_vcov)
+fe1
+```
+
+```{r}
+# 使用OLS模型
+ols_model_n <- lm(
+  vcrimerate ~ 
+    immig_laws_restrict + povrate + unemployment + nonwhite +
+    medianage + achgt + exp_education + apolpi + gini_coef + guncontrol_opencarry + w_guncontrol_bc_privatesales +
+    immig_laws_restrict * povrate + immig_laws_restrict * unemployment + povrate * unemployment,
+  data = pdata
+)
+
+# 检查结果
+summary(ols_model_n)
+
+```
+
+
+```{r}
+fixed_effects_model_2 <- plm(
+  vcrimerate ~ 
+    immig_laws_restrict + unemployment+achgt+nonwhite
+    + gini_coef +guncontrol_opencarry+achgt ,
+  data = pdata,
+  model = "within"  # "within" 表示固定效应模型
+)
+
+summary(fixed_effects_model_2)
+```
+
+```{r}
+fixed_effects_model_3 <- plm(
+  vcrimerate ~ 
+    immig_laws_restrict + povrate + unemployment + 
+    nonwhite + medianage + achgt + exp_education + apolpi + gini_coef + 
+    guncontrol_opencarry + w_guncontrol_bc_privatesales  ,
+  data = pdata,
+  model = "within"  # "within" 表示固定效应模型
+)
+
+# 获取原始协方差矩阵
+original_vcov_3 <- vcov(fixed_effects_model_3)
+
+# 添加微小扰动值，使矩阵可逆
+perturbed_vcov_3 <- original_vcov_3 + diag(1e-6, nrow(original_vcov_3))
+fe3<-summary(fixed_effects_model_3, vcov = perturbed_vcov_3)
+fe3
+```
+
+```{r}
+# Calculate the average number of immigration restriction laws per state
+state_avg <- data1 %>%
+  group_by(state) %>%
+  summarize(avg_immig_laws_restrict = mean(immig_laws_restrict, na.rm = TRUE))
+
+# Calculate the 25th and 75th percentiles
+q1 <- quantile(state_avg$avg_immig_laws_restrict, 0.25, na.rm = TRUE)
+q3 <- quantile(state_avg$avg_immig_laws_restrict, 0.75, na.rm = TRUE)
+
+# Classify states into Low, Moderate, and High groups
+state_avg <- state_avg %>%
+  mutate(
+    law_group = case_when(
+      avg_immig_laws_restrict < q1 ~ "Low",
+      avg_immig_laws_restrict > q3 ~ "High",
+      TRUE ~ "Moderate"
+    )
+  )
+
+# View the categorized data
+print(state_avg)
+
+```
+
+```{r}
+data1_with_group <- data1 %>%
+  left_join(state_avg, by = "state")
+
+# Extract subsets for each group
+data_low <- data1_with_group %>%
+  filter(law_group == "Low")
+
+data_high <- data1_with_group %>%
+  filter(law_group == "High")
+
+```
+
+```{r}
+# Filter data_low and data_high for 2005 and 2012
+data_low_2005 <- data_low[data_low$year == 2005, ]
+data_high_2005 <- data_high[data_high$year == 2005, ]
+data_low_2012 <- data_low[data_low$year == 2012, ]
+data_high_2012 <- data_high[data_high$year == 2012, ]
+
+# Function to calculate descriptive statistics
+calculate_stats <- function(data, vars) {
+  sapply(vars, function(var) {
+    c(
+      Mean = mean(data[[var]], na.rm = TRUE),
+      SD = sd(data[[var]], na.rm = TRUE),
+      Count = sum(!is.na(data[[var]]))
+    )
+  })
+}
+
+# Variables to include in descriptive statistics
+vars_to_include <- c("vcrimerate", "immig_laws_restrict")
+
+# Compute statistics for 2005 and 2012
+stats_2005 <- list(
+  Low = calculate_stats(data_low_2005, vars_to_include),
+  High = calculate_stats(data_high_2005, vars_to_include)
+)
+
+stats_2012 <- list(
+  Low = calculate_stats(data_low_2012, vars_to_include),
+  High = calculate_stats(data_high_2012, vars_to_include)
+)
+
+
+stats_2005
+stats_2012
+
+```
+
+```{r}
+# Step 1: Extract model coefficients
+coef_model <- coef(ols_model_n)
+
+# Step 2: Calculate average factors for each group and year
+low_avg_factors <- data_low %>%
+  group_by(year) %>%
+  summarize(
+    immig_laws_restrict = mean(immig_laws_restrict, na.rm = TRUE),
+    povrate = mean(povrate, na.rm = TRUE),
+    unemployment = mean(unemployment, na.rm = TRUE),
+    nonwhite = mean(nonwhite, na.rm = TRUE),
+    medianage = mean(medianage, na.rm = TRUE),
+    achgt = mean(achgt, na.rm = TRUE),
+    exp_education = mean(exp_education, na.rm = TRUE),
+    apolpi = mean(apolpi, na.rm = TRUE),
+    gini_coef = mean(gini_coef, na.rm = TRUE),
+    guncontrol_opencarry = mean(guncontrol_opencarry, na.rm = TRUE),
+    w_guncontrol_bc_privatesales = mean(w_guncontrol_bc_privatesales, na.rm = TRUE)
+  )
+
+high_avg_factors <- data_high %>%
+  group_by(year) %>%
+  summarize(
+    immig_laws_restrict = mean(immig_laws_restrict, na.rm = TRUE),
+    povrate = mean(povrate, na.rm = TRUE),
+    unemployment = mean(unemployment, na.rm = TRUE),
+    nonwhite = mean(nonwhite, na.rm = TRUE),
+    medianage = mean(medianage, na.rm = TRUE),
+    achgt = mean(achgt, na.rm = TRUE),
+    exp_education = mean(exp_education, na.rm = TRUE),
+    apolpi = mean(apolpi, na.rm = TRUE),
+    gini_coef = mean(gini_coef, na.rm = TRUE),
+    guncontrol_opencarry = mean(guncontrol_opencarry, na.rm = TRUE),
+    w_guncontrol_bc_privatesales = mean(w_guncontrol_bc_privatesales, na.rm = TRUE)
+  )
+
+# Step 3: Predict vcrimerate for each group and year
+predict_vcrime <- function(data, coef_model) {
+  data %>%
+    mutate(
+      predicted_vcrime = coef_model["(Intercept)"] +
+        coef_model["immig_laws_restrict"] * immig_laws_restrict +
+        coef_model["povrate"] * povrate +
+        coef_model["unemployment"] * unemployment +
+        coef_model["nonwhite"] * nonwhite +
+        coef_model["medianage"] * medianage +
+        coef_model["achgt"] * achgt +
+        coef_model["exp_education"] * exp_education +
+        coef_model["apolpi"] * apolpi +
+        coef_model["gini_coef"] * gini_coef +
+        coef_model["guncontrol_opencarry"] * guncontrol_opencarry +
+        coef_model["w_guncontrol_bc_privatesales"] * w_guncontrol_bc_privatesales +
+        coef_model["immig_laws_restrict:povrate"] * immig_laws_restrict * povrate +
+        coef_model["immig_laws_restrict:unemployment"] * immig_laws_restrict * unemployment +
+        coef_model["povrate:unemployment"] * povrate * unemployment
+    )
+}
+
+low_avg_factors <- predict_vcrime(low_avg_factors, coef_model)
+high_avg_factors <- predict_vcrime(high_avg_factors, coef_model)
+
+# Step 4: Combine predictions for low and high groups
+predicted_results <- bind_rows(
+  low_avg_factors %>% mutate(group = "Low"),
+  high_avg_factors %>% mutate(group = "High")
+)
+
+# Step 5: View results
+print(predicted_results)
+
+
+```
+
+```{r}
+library(ggplot2)
+
+# 假设 `data_low` 和 `data_high` 包含实际值列 vcrimerate 和 year
+# 添加实际值到预测数据框中
+low_avg_factors <- low_avg_factors %>%
+  left_join(data_low %>%
+              group_by(year) %>%
+              summarize(actual_vcrime = mean(vcrimerate, na.rm = TRUE)),
+            by = "year") %>%
+  mutate(group = "Low")
+
+high_avg_factors <- high_avg_factors %>%
+  left_join(data_high %>%
+              group_by(year) %>%
+              summarize(actual_vcrime = mean(vcrimerate, na.rm = TRUE)),
+            by = "year") %>%
+  mutate(group = "High")
+
+# 合并数据
+plot_data <- bind_rows(low_avg_factors, high_avg_factors)
+```
+
+```{r}
+ggplot(plot_data, aes(x = year)) +
+  geom_line(aes(y = predicted_vcrime, color = group, linetype = "Predicted")) +
+  geom_line(aes(y = actual_vcrime.x, color = group, linetype = "Actual")) +
+  labs(
+    title = "Predicted vs. Actual Violent Crime Rates by Group",
+    x = "Year",
+    y = "Violent Crime Rate",
+    color = "Group",
+    linetype = "Type"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Low" = "blue", "High" = "red")) +
+  scale_linetype_manual(values = c("Predicted" = "dashed", "Actual" = "solid")) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.title = element_text(hjust = 0.5) # 标题居中
+  )
+
+```
+
+
+```{r}
+east_coast_states <- c("Maine", "New Hampshire", "Massachusetts", "Rhode Island", "Connecticut", 
+                       "New York", "New Jersey", "Delaware", "Maryland", "Virginia", 
+                       "North Carolina", "South Carolina", "Georgia", "Florida")
+
+west_coast_states <- c("California", "Oregon", "Washington", "Alaska", "Hawaii")
+
+# 添加新列 "region" 表示地理位置
+data1$region <- ifelse(data1$state %in% east_coast_states, "East", 
+                      ifelse(data1$state %in% west_coast_states, "West", "Other"))
+
+```
+
+```{r}
+
+# 提取OLS模型结果
+ols_summary <- summary(ols_model_n)$coefficients
+
+# 提取固定效应模型结果
+fe1_summary<-fe1$coefficients
+fe2_summary <- summary(fixed_effects_model_2)$coefficients
+fe3_summary <- fe3$coefficients
+
+
+
+
+
+# 定义主要变量和交叉项
+main_vars <- c(
+  "(Intercept)",
+  "immig_laws_restrict",
+  "unemployment",
+  "nonwhite",
+  "gini_coef",
+  "guncontrol_opencarry",
+  "achgt"
+)
+
+other_vars <- c(
+  'povrate',
+  'medianage', 'exp_education', 'apolpi',  
+  'w_guncontrol_bc_privatesales'
+)
+
+interaction_vars <- c(
+  "immig_laws_restrict:povrate",
+  "immig_laws_restrict:unemployment",
+  "povrate:unemployment"
+)
+
+
+
+# 创建函数：对齐变量并填充数值或 "Yes/No"，同时标注 p-value
+align_results_with_pvalue <- function(model_summary, main_vars, other_vars, interaction_vars) {
+  all_vars <- unique(c(main_vars, other_vars, interaction_vars))
+  result <- data.frame(Variable = all_vars)
+  matched <- model_summary[match(all_vars, rownames(model_summary)), ]
+  
+  # 填写主效应变量的数值并添加 p-value
+  result$Value <- ifelse(
+    result$Variable %in% main_vars,
+    ifelse(
+      is.na(matched[, 1]),
+      "No",
+      sprintf("%.3f\n(%.3f)", matched[, 1], matched[, 4])  # 数值和 p-value
+    ),
+    NA
+  )
+  
+  # 填写其他变量和交互项的 "Yes/No"
+  result$Other <- ifelse(result$Variable %in% other_vars,
+                         ifelse(!is.na(matched[, 1]), "Yes", "No"), 'No')
+  result$Interaction <- ifelse(result$Variable %in% interaction_vars,
+                                ifelse(!is.na(matched[, 1]), "Yes", "No"), 'No')
+  return(result)
+}
+
+# 对齐每个模型的结果
+ols_df <- align_results_with_pvalue(ols_summary, main_vars, other_vars, interaction_vars)
+fe1_df <- align_results_with_pvalue(fe1_summary, main_vars, other_vars, interaction_vars)
+fe2_df <- align_results_with_pvalue(fe2_summary, main_vars, other_vars, interaction_vars)
+fe3_df <- align_results_with_pvalue(fe3_summary, main_vars, other_vars, interaction_vars)
+
+# 创建最终表格
+final_results <- data.frame(
+  Variable = main_vars,
+  OLS = ols_df$Value[match(main_vars, ols_df$Variable)],
+  FE1 = fe1_df$Value[match(main_vars, fe1_df$Variable)],
+  FE2 = fe2_df$Value[match(main_vars, fe2_df$Variable)],
+  FE3 = fe3_df$Value[match(main_vars, fe3_df$Variable)]
+)
+
+# 添加 "Other" 和 "Interactions"
+final_results <- rbind(
+  final_results,
+  data.frame(
+    Variable = "Other",
+    OLS = ifelse(any(ols_df$Other == "Yes"), "Yes", "No"),
+    FE1 = ifelse(any(fe1_df$Other == "Yes"), "Yes", "No"),
+    FE2 = ifelse(any(fe2_df$Other == "Yes"), "Yes", "No"),
+    FE3 = ifelse(any(fe3_df$Other == "Yes"), "Yes", "No")
+  ),
+  data.frame(
+    Variable = "Interactions",
+    OLS = ifelse(any(ols_df$Interaction == "Yes"), "Yes", "No"),
+    FE1 = ifelse(any(fe1_df$Interaction == "Yes"), "Yes", "No"),
+    FE2 = ifelse(any(fe2_df$Interaction == "Yes"), "Yes", "No"),
+    FE3 = ifelse(any(fe3_df$Interaction == "Yes"), "Yes", "No")
+  )
+)
+
+# 打印表格
+library(kableExtra)
+
+final_results %>%
+  kbl(caption = "Regression Results with Main Effects, p-values, Other, and Interactions") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+
+```
